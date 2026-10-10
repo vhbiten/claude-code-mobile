@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""entregar <arquivo|pasta|link>... [--legenda "texto"] [--avisar]
+
+Entrega coisas do PC pro painel do celular (https://<pc>:8445): cada item vira um cartão na
+conversa, no ponto em que foi entregue, e fica na aba "Arquivos" da gaveta de conversas.
+Imagem e vídeo aparecem com prévia e botão Salvar (folha de compartilhar do iPhone); outros
+arquivos com Baixar; link com Abrir. Pasta vira .zip.
+
+O arquivo é copiado pra entregas/<data>/ dentro do projeto (fora do git), então pode apagar o original.
+--avisar também manda uma notificação (Web Push) pro celular, útil com ele no bolso.
+"""
+import json
+import mimetypes
+import os
+import secrets
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+RAIZ = Path(__file__).resolve().parent.parent
+ENTREGAS = Path(os.environ.get("PAINEL_ENTREGAS", RAIZ / "entregas"))  # outra pasta só pra teste
+REGISTRO = ENTREGAS / "registro.jsonl"
+IMAGEM = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".avif"}
+VIDEO = {".mp4", ".mov", ".m4v", ".webm"}
+AUDIO = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus"}
+PREVIA_IMAGEM = 1_500_000  # acima disso (ou de 2000 px) a conversa mostra uma prévia leve
+
+
+def tamanho_humano(n: int) -> str:
+    for unidade in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unidade == "GB":
+            return f"{n:.0f} {unidade}" if unidade == "B" or n >= 10 else f"{n:.1f} {unidade}".replace(".", ",")
+        n /= 1024
+    return ""
+
+
+def rodar(*cmd: str) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+
+def medidas(arq: Path) -> dict:
+    """Largura, altura e duração (vídeo/áudio) pelo ffprobe; vazio se não der."""
+    r = rodar("ffprobe", "-v", "error", "-show_entries", "stream=width,height:format=duration",
+              "-of", "json", str(arq))
+    try:
+        d = json.loads(r.stdout)
+    except ValueError:
+        return {}
+    saida = {}
+    for s in d.get("streams", []):
+        if s.get("width"):
+            saida.update(larg=s["width"], alt=s["height"])
+            break
+    if (dur := (d.get("format") or {}).get("duration")) not in (None, "N/A"):
+        saida["dur"] = round(float(dur), 1)
+    return saida
+
+
+def previa(arq: Path, tipo: str, info: dict) -> str | None:
+    """Imagem leve pra conversa: o 1º quadro do vídeo, ou a imagem reduzida se for pesada."""
+    destino = arq.with_name(arq.name + ".previa.jpg")
+    if tipo == "video":
+        r = rodar("ffmpeg", "-v", "error", "-y", "-ss", "0.3", "-i", str(arq), "-frames:v", "1",
+                  "-vf", "scale='min(900,iw)':-2", "-q:v", "4", str(destino))
+    elif tipo == "imagem" and (arq.stat().st_size > PREVIA_IMAGEM or max(info.get("larg", 0), info.get("alt", 0)) > 2000
+                               or arq.suffix.lower() in {".heic", ".heif"}):
+        r = rodar("magick", f"{arq}[0]", "-auto-orient", "-resize", "1400x1400>", "-quality", "82", str(destino))
+    else:
+        return None
+    return destino.name if r.returncode == 0 and destino.exists() else None
+
+
+def registrar(item: dict) -> None:
+    ENTREGAS.mkdir(parents=True, exist_ok=True)
+    with open(REGISTRO, "a") as f:
+        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+
+def entregar_arquivo(origem: Path, legenda: str) -> dict:
+    agora = datetime.now()
+    pasta = ENTREGAS / agora.strftime("%Y-%m-%d")
+    pasta.mkdir(parents=True, exist_ok=True)
+    zipado = origem.is_dir()
+    nome = origem.name + (".zip" if zipado else "")  # o nome que aparece no celular
+    seguro = "".join(c if c.isascii() and (c.isalnum() or c in "._-") else "_" for c in nome).strip("._") or "arquivo"
+    if zipado:
+        origem = Path(shutil.make_archive(str(pasta / f".zip-{secrets.token_hex(4)}"), "zip", origem))
+    alvo = pasta / f"{agora:%H%M%S}-{seguro[-100:]}"
+    n = 2
+    while alvo.exists():
+        alvo = pasta / f"{agora:%H%M%S}-{n}-{seguro[-100:]}"
+        n += 1
+    if zipado:
+        origem.rename(alvo)
+    else:
+        shutil.copy2(origem, alvo)
+    ext = alvo.suffix.lower()
+    tipo = ("imagem" if ext in IMAGEM else "video" if ext in VIDEO else "audio" if ext in AUDIO
+            else "pdf" if ext == ".pdf" else "arquivo")
+    info = medidas(alvo) if tipo in ("imagem", "video", "audio") else {}
+    item = {"id": secrets.token_urlsafe(6), "quando": int(time.time() * 1000), "tipo": tipo,
+            "nome": nome, "rel": f"{pasta.name}/{alvo.name}", "tamanho": alvo.stat().st_size,
+            "mime": mimetypes.guess_type(alvo.name)[0] or "application/octet-stream", **info}
+    if p := previa(alvo, tipo, info):
+        item["previa"] = f"{pasta.name}/{p}"
+    if legenda:
+        item["legenda"] = legenda
+    return item
+
+
+def entregar_link(url: str, legenda: str) -> dict:
+    return {"id": secrets.token_urlsafe(6), "quando": int(time.time() * 1000), "tipo": "link",
+            "url": url, "nome": urlparse(url).netloc, **({"legenda": legenda} if legenda else {})}
+
+
+def main() -> int:
+    args, legenda, avisar = [], "", False
+    it = iter(sys.argv[1:])
+    for a in it:
+        if a in ("-h", "--help"):
+            print(__doc__.strip())
+            return 0
+        if a == "--legenda":
+            legenda = next(it, "")
+        elif a == "--avisar":
+            avisar = True
+        else:
+            args.append(a)
+    if not args:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    erros = 0
+    for a in args:
+        if a.startswith(("http://", "https://")):
+            item = entregar_link(a, legenda)
+        else:
+            origem = Path(a).expanduser()
+            if not origem.exists():
+                print(f"entregar: não achei {a}", file=sys.stderr)
+                erros += 1
+                continue
+            item = entregar_arquivo(origem, legenda)
+        registrar(item)
+        detalhe = item["url"] if item["tipo"] == "link" else f"{item['tipo']} · {tamanho_humano(item['tamanho'])}"
+        # A marca [entrega:<id>] é o que o painel procura na saída deste comando pra pôr o cartão na conversa.
+        print(f"entregue no painel: {item['nome']} · {detalhe} [entrega:{item['id']}]")
+    if avisar and erros < len(args):
+        subprocess.run([str(RAIZ / ".venv" / "bin" / "python"), "-I", str(RAIZ / "bin" / "webpush.py"),
+                        "Chegou arquivo no painel", legenda or "Toque pra ver e salvar", "--tag", "entrega"])
+    return 1 if erros else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,7 @@
+# dados locais: anexos que você manda, arquivos que o Claude entrega, chaves e inscrições de push, logs
+anexos/
+entregas/
+config/
+logs/
+.venv/
+__pycache__/
