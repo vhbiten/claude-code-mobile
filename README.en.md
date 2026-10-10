@@ -5,10 +5,10 @@ Drive **Claude Code on your computer from your phone**, with everything the term
 [Português](README.md) · **English**
 
 <p align="center">
-  <img src="docs/demo.gif" width="330" alt="From the phone, Claude rewrites a function with Decimal, covers the edge cases with tests and commits, with permissions approved by tapping">
+  <img src="docs/demo.webp" width="390" alt="From the phone, Claude rewrites a function with Decimal, covers the edge cases with tests and commits, with permissions approved by tapping">
 </p>
 
-> In the GIF, from the iPhone: I ask Claude to rewrite a shopping-cart total with `Decimal` and `ROUND_HALF_UP`, validate inputs with `ValueError`, cover the edge cases with `subTest`, run the suite and commit following Conventional Commits. I approve each command by tapping its card, and at the end I open the raw terminal screen with the diff. Everything runs on the computer, in under a minute. [Higher quality video](docs/demo.mp4). The interface is in Portuguese.
+> In the clip, from the iPhone: I ask Claude to rewrite a shopping-cart total with `Decimal` and `ROUND_HALF_UP`, validate inputs with `ValueError`, cover the edge cases with `subTest`, run the suite and commit following Conventional Commits. I approve each command by tapping its card, and at the end I open the raw terminal screen with the diff. Everything runs on the computer, in under a minute. [Full iPhone-resolution video (MP4)](docs/demo.mp4). The interface is in Portuguese.
 
 ## Why not Remote Control?
 

@@ -5,10 +5,10 @@ Comande o **Claude Code do seu PC pelo celular**, com tudo o que o terminal faz:
 **Português** · [English](README.en.md)
 
 <p align="center">
-  <img src="docs/demo.gif" width="330" alt="Pelo celular, o Claude reescreve uma função com Decimal, cobre as bordas com testes e faz o commit, com as permissões aprovadas por toque">
+  <img src="docs/demo.webp" width="390" alt="Pelo celular, o Claude reescreve uma função com Decimal, cobre as bordas com testes e faz o commit, com as permissões aprovadas por toque">
 </p>
 
-> No GIF, pelo iPhone: peço pro Claude reescrever o cálculo de um carrinho com `Decimal` e `ROUND_HALF_UP`, validar as entradas com `ValueError`, cobrir as bordas com `subTest`, rodar a suíte e commitar no padrão Conventional Commits. Aprovo cada comando tocando no cartão; no fim, abro a tela do terminal com o diff. Tudo roda no PC, em menos de um minuto. [Vídeo em melhor qualidade](docs/demo.mp4).
+> No vídeo, pelo iPhone: peço pro Claude reescrever o cálculo de um carrinho com `Decimal` e `ROUND_HALF_UP`, validar as entradas com `ValueError`, cobrir as bordas com `subTest`, rodar a suíte e commitar no padrão Conventional Commits. Aprovo cada comando tocando no cartão; no fim, abro a tela do terminal com o diff. Tudo roda no PC, em menos de um minuto. [Vídeo em resolução de iPhone (MP4)](docs/demo.mp4).
 
 ## Por que não o Remote Control?
 
